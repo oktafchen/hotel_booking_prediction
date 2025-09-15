@@ -126,8 +126,8 @@ if submitted:
     X_final = X_final.reindex(columns=train_columns, fill_value=0)
 
     # Prediksi
-    prediction = xgb_model.predict(X_final)[0]
-    proba = xgb_model.predict_proba(X_final)[0][1]
+    prediction = model.predict(X_final)[0]
+    proba = model.predict_proba(X_final)[0][1]
 
     st.subheader("Prediction Result")
     if prediction == 1:
