@@ -17,6 +17,7 @@ import joblib
 # ------------------------
 model = joblib.load("xgb_model.pkl")        # ganti dengan file model hasil training
 encoder = joblib.load("encoder.pkl")        # encoder OneHot atau ColumnTransformer
+scaler = joblib.load("scaler.pkl")
 train_columns = joblib.load("train_columns.pkl")  # kolom akhir setelah encoding
 
 st.title("🔮 Hotel Booking Cancellation Prediction")
@@ -25,55 +26,111 @@ st.write("Coba masukkan detail booking, nanti model prediksi kemungkinan cancel.
 # ------------------------
 # Input user (form)
 # ------------------------
-col1, col2 = st.columns(2)
+# ====== Generate daftar opsi categorical dari train_columns ======
+def get_options(prefix):
+    return sorted([col.replace(prefix, "") for col in train_columns if col.startswith(prefix)])
 
-with col1:
-    hotel = st.selectbox("Hotel Type", ["City Hotel", "Resort Hotel"])
-    lead_time = st.number_input("Lead Time (hari)", min_value=0, max_value=365, value=30)
-    adults = st.number_input("Jumlah Adults", min_value=1, max_value=10, value=2)
-    children = st.number_input("Jumlah Children", min_value=0, max_value=10, value=0)
-    babies = st.number_input("Jumlah Babies", min_value=0, max_value=5, value=0)
+hotels = get_options("hotel_")
+meals = get_options("meal_")
+countries = get_options("country_")
+market_segments = get_options("market_segment_")
+distribution_channels = get_options("distribution_channel_")
+reserved_room_types = get_options("reserved_room_type_")
+assigned_room_types = get_options("assigned_room_type_")
+deposit_types = get_options("deposit_type_")
+customer_types = get_options("customer_type_")
 
-with col2:
-    market_segment = st.selectbox("Market Segment", ["Online TA", "Offline TA/TO", "Groups", "Direct", "Corporate"])
-    distribution_channel = st.selectbox("Distribution Channel", ["TA/TO", "Direct", "Corporate", "GDS"])
-    customer_type = st.selectbox("Customer Type", ["Transient", "Contract", "Group", "Transient-Party"])
-    deposit_type = st.selectbox("Deposit Type", ["No Deposit", "Non Refund", "Refundable"])
-    adr = st.number_input("Average Daily Rate (ADR)", min_value=0.0, max_value=1000.0, value=100.0)
+# ====== Form input user ======
+with st.form("booking_form"):
+    col1, col2 = st.columns(2)
 
-# ------------------------
-# Buat DataFrame dari input
-# ------------------------
-input_dict = {
-    "hotel": [hotel],
-    "lead_time": [lead_time],
-    "adults": [adults],
-    "children": [children],
-    "babies": [babies],
-    "market_segment": [market_segment],
-    "distribution_channel": [distribution_channel],
-    "customer_type": [customer_type],
-    "deposit_type": [deposit_type],
-    "adr": [adr],
-}
+    with col1:
+        hotel = st.selectbox("Hotel", hotels)
+        lead_time = st.number_input("Lead Time", min_value=0, max_value=365, value=50)
+        stays_in_weekend_nights = st.number_input("Weekend Nights", min_value=0, max_value=30, value=1)
+        stays_in_week_nights = st.number_input("Week Nights", min_value=0, max_value=50, value=2)
+        adults = st.number_input("Adults", min_value=0, max_value=10, value=2)
+        children = st.number_input("Children", min_value=0, max_value=10, value=0)
+        babies = st.number_input("Babies", min_value=0, max_value=5, value=0)
+        meal = st.selectbox("Meal", meals)
+        country = st.selectbox("Country", countries)
 
-df_input = pd.DataFrame(input_dict)
+    with col2:
+        market_segment = st.selectbox("Market Segment", market_segments)
+        distribution_channel = st.selectbox("Distribution Channel", distribution_channels)
+        is_repeated_guest = st.selectbox("Repeated Guest", [0, 1])
+        previous_cancellations = st.number_input("Previous Cancellations", min_value=0, max_value=50, value=0)
+        previous_bookings_not_canceled = st.number_input("Previous Bookings Not Canceled", min_value=0, max_value=50, value=0)
+        reserved_room_type = st.selectbox("Reserved Room Type", reserved_room_types)
+        assigned_room_type = st.selectbox("Assigned Room Type", assigned_room_types)
+        booking_changes = st.number_input("Booking Changes", min_value=0, max_value=20, value=0)
+        deposit_type = st.selectbox("Deposit Type", deposit_types)
+        days_in_waiting_list = st.number_input("Days in Waiting List", min_value=0, max_value=500, value=0)
+        customer_type = st.selectbox("Customer Type", customer_types)
+        adr = st.number_input("ADR (Average Daily Rate)", min_value=0.0, value=100.0)
+        required_car_parking_spaces = st.number_input("Car Parking Spaces", min_value=0, max_value=5, value=0)
+        total_of_special_requests = st.number_input("Special Requests", min_value=0, max_value=10, value=0)
+        company_flag = st.selectbox("Company Flag", [0, 1])
+        agent_flag = st.selectbox("Agent Flag", [0, 1])
 
-# ------------------------
-# Encode sesuai training
-# ------------------------
-df_enc = encoder.transform(df_input)
-df_enc = pd.DataFrame(df_enc, columns=encoder.get_feature_names_out(df_input.columns))
+    submitted = st.form_submit_button("Predict")
 
-# Reindex biar kolom sama kayak training
-df_enc = df_enc.reindex(columns=train_columns, fill_value=0)
+# ====== Proses prediksi ======
+if submitted:
+    # Data input user
+    input_dict = {
+        "hotel": hotel,
+        "lead_time": lead_time,
+        "stays_in_weekend_nights": stays_in_weekend_nights,
+        "stays_in_week_nights": stays_in_week_nights,
+        "adults": adults,
+        "children": children,
+        "babies": babies,
+        "meal": meal,
+        "country": country,
+        "market_segment": market_segment,
+        "distribution_channel": distribution_channel,
+        "is_repeated_guest": is_repeated_guest,
+        "previous_cancellations": previous_cancellations,
+        "previous_bookings_not_canceled": previous_bookings_not_canceled,
+        "reserved_room_type": reserved_room_type,
+        "assigned_room_type": assigned_room_type,
+        "booking_changes": booking_changes,
+        "deposit_type": deposit_type,
+        "days_in_waiting_list": days_in_waiting_list,
+        "customer_type": customer_type,
+        "adr": adr,
+        "required_car_parking_spaces": required_car_parking_spaces,
+        "total_of_special_requests": total_of_special_requests,
+        "company_flag": company_flag,
+        "agent_flag": agent_flag,
+    }
 
-# ------------------------
-# Prediksi
-# ------------------------
-if st.button("Prediksi Cancel Booking"):
-    prob = model.predict_proba(df_enc)[:, 1][0]
-    if prob > 0.5:
-        st.error(f"⚠️ Booking kemungkinan **dibatalkan** dengan probabilitas {prob:.2%}")
+    input_df = pd.DataFrame([input_dict])
+
+    # Encode hanya kolom kategorikal
+    cat_cols = ["hotel","meal","country","market_segment","distribution_channel",
+                "reserved_room_type","assigned_room_type","deposit_type","customer_type"]
+
+    X_cat = encoder.transform(input_df[cat_cols])
+    cat_features = encoder.get_feature_names_out(cat_cols)
+    X_cat_df = pd.DataFrame(X_cat, columns=cat_features, index=input_df.index)
+
+    # Ambil kolom numerik
+    num_df = input_df.drop(columns=cat_cols)
+
+    # Gabungkan
+    X_final = pd.concat([num_df, X_cat_df], axis=1)
+
+    # Reindex biar sesuai train_columns
+    X_final = X_final.reindex(columns=train_columns, fill_value=0)
+
+    # Prediksi
+    prediction = xgb_model.predict(X_final)[0]
+    proba = xgb_model.predict_proba(X_final)[0][1]
+
+    st.subheader("Prediction Result")
+    if prediction == 1:
+        st.error(f"Booking ini kemungkinan **DIBATALKAN**. Probabilitas: {proba:.2%}")
     else:
-        st.success(f"✅ Booking kemungkinan **tidak dibatalkan** (probabilitas cancel {prob:.2%})")
+        st.success(f"Booking ini kemungkinan **TIDAK dibatalkan**. Probabilitas: {proba:.2%}")
