@@ -71,6 +71,7 @@ This project aims to **analyze cancellation patterns** and **build predictive mo
 Oktavindy
 
 📍 Data Science Bootcamp @ dibimbing.id
+
 🔗 ooktavindy@gmail.com
 
 ## How to Run Locally
